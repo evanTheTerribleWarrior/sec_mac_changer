@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# Usage
+function usage(){
+  echo "Usage: ${0} [-r | -m MAC_ADDRESS] [-i INTERFACE]"
+  echo "Change your MAC address on the specified interface"
+  echo "  -r  		  Generates a random MAC for you. Can't be used together with -m."
+  echo "  -m MAC_ADDRESS  Choose a specific target MAC address. Can't be used together with -r."
+  echo "  -i INTERFACE    Choose the interface you want the new MAC for e.g. eth0"
+}
+
+# Function to check for not allowed combinations of arguments
+function checkOptions(){ 
+  if [[ "${INPUT_STRING}" == *"-r"* ]] && [[ "${INPUT_STRING}" == *"-m"* ]]; then
+    echo "${COMMON_OUTPUT}You can't use -r and -m options together"
+    usage
+    exit 1 
+  elif [[ "${INPUT_STRING}" != *"-r"* ]] && [[ "${INPUT_STRING}" != *"-m"* ]]; then
+    echo "${COMMON_OUTPUT}You have not selected a method to generate MAC, either -r or -m. Please see below:"
+    usage
+    exit 1
+  fi 
+}
+
+function checkIfInterfaceProvided(){
+  
+  if [[ "${INPUT_STRING}" != *"-i"* ]]; then
+    echo "${COMMON_OUTPUT}You have not selected an interface using the -i flag. Please see below:"
+    usage
+    exit 1
+  else
+    INTERFACE=$(awk '{for(i=1;i<=NF;i++){if($i~"-i"){print $(i+1)}}}' <<< "$INPUT_STRING")
+    if [[ "$INTERFACE" == "" ]];then
+     echo "${COMMON_OUTPUT}No interface was provided. Please see below for correct usage"
+     usage
+     exit 1     
+    else
+      checkInterfaceValidity
+    fi  
+  fi 
+
+}
+
+function checkIfArgsProvided(){
+ 	
+ if [[ ${ARGUMENTS_NUMBER} -eq 0 ]]; then
+    usage
+    exit 1
+  fi  
+
+}
+
+# Function for random MAC generation
+function generateRandomMac(){	
+  for i in {1..6}
+  do
+    local MAC_BYTE=$(openssl rand -hex 1)
+ 
+    if [[ $i -lt 6 ]]
+    then	  
+      local MAC_SEMICOLON=":"
+      NEW_MAC_ADDRESS+="$MAC_BYTE$MAC_SEMICOLON"
+    else
+      NEW_MAC_ADDRESS+="$MAC_BYTE"
+    fi
+  done
+}
+
+# Function for user provided MAC
+function checkUserProvidedMac(){
+
+  if [[ ${NEW_MAC_ADDRESS} =~ ([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2}) ]];
+  then
+    echo "${COMMON_OUTPUT}The MAC is valid"	  
+  else
+    echo "${COMMON_OUTPUT}The MAC you provided does not seem to be in a valid format. Make sure it has 12 valid hexadecimals characters, so 6 bytes separated by colon"
+    echo "${COMMON_OUTPUT}For example aa:bb:cc:dd:ee:ff"
+    exit 1
+  fi   
+
+}
+
+# Function to check if the provided interface exists in the system
+function checkInterfaceValidity(){
+  local INTERFACE_LIST=$(ls -l /sys/class/net/ | grep -v virtual | cut -d' ' -f9) 
+  if [[ $INTERFACE_LIST != *"$INTERFACE"* ]]; then
+   echo "${COMMON_OUTPUT}Did not find interface $INTERFACE. Please make sure you select one of your available non-virtual network interfaces, for example eth0 or wlan0 etc"
+   exit 1 
+  fi 
+
+}
+
+INTERFACE=""
+NEW_MAC_ADDRESS=""
+COMMON_OUTPUT="[mac_changer says:] "
+ARGUMENTS_NUMBER=$#
+
+checkIfArgsProvided
+
+INPUT_STRING="$@"
+checkIfInterfaceProvided
+checkOptions
+
+# Check input
+while getopts :i:rm: opt
+do 
+  case ${opt} in
+    r)	          	        
+      generateRandomMac
+      ;;
+    m)	    
+      NEW_MAC_ADDRESS="${OPTARG}"      
+      checkUserProvidedMac
+      ;;  
+    \?)
+      usage
+      ;;
+    :)
+      echo "${COMMON_OUTPUT}Invalid option: ${OPTARG} requires argument. See below:"
+      usage
+      ;;  
+  esac
+done
+shift $((OPTIND -1))
+
+echo "Updating current MAC address with new value ${NEW_MAC_ADDRESS}..."
+sleep 1
+# Bring interface down
+sudo ip link set dev $INTERFACE down 2>/dev/null
+
+# Set new MAC
+sudo ip link set dev $INTERFACE address ${NEW_MAC_ADDRESS} 2>/dev/null
+
+# Bring interface up
+sudo ip link set dev $INTERFACE up 2>/dev/null
+
+echo "MAC address updated successfully"
+
