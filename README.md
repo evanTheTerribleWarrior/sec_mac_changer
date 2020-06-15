@@ -3,7 +3,14 @@
 
 ## Usage example
 
+The module uses "ip" instead of ifconfig but you can extend it
+
 ```sh
-[sudo] mac_changer -i wlan0 -r //This will choose a random MAC
-[sudo] mac_changer -i wlan0 -m [YOUR_OWN_MAC] //This allows you to define your own MAC
+Options:
+-i: The network interface e.g. eth0, wlan0...
+-r: To generate a random MAC
+-m: To specify your own MAC
+
+[sudo] mac_changer -i wlan0 -r
+[sudo] mac_changer -i wlan0 -m aa:bb:cc:dd:ee:ff
 ```
